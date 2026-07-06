@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Eye Disease Classifier</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>AI Eye Disease Classifier</h1>
+        <p class="subtitle">Upload an eye image and get prediction</p>
+        <div class="model-select">
+            <label for="model_name">Select Model:</label>
+            <select id="model_name"></select>
+        </div>
+        <div class="upload-area">
+            <input type="file" id="imageInput" accept="image/*" hidden>
+            <button id="uploadBtn" class="btn-upload">Choose Image</button>
+            <p class="hint" id="fileName">No file selected</p>
+        </div>
+        <div class="preview" id="preview" style="display:none;">
+            <img id="previewImg" src="" alt="Preview">
+        </div>
+        <button id="predictBtn" class="btn-predict" disabled>Predict</button>
+        <div class="loading" id="loading" style="display:none;">
+            <div class="spinner"></div>
+            <p>Predicting...</p>
+        </div>
+        <div class="result" id="result" style="display:none;">
+            <h2>Result</h2>
+            <div class="result-main" id="resultMain"></div>
+            <div class="result-all" id="resultAll"></div>
+        </div>
+        <div class="error" id="errorBox" style="display:none;">
+            <p id="errorMsg"></p>
+        </div>
+    </div>
+    <script>
+        const uploadBtn=document.getElementById('uploadBtn');
+        const imageInput=document.getElementById('imageInput');
+        const fileName=document.getElementById('fileName');
+        const preview=document.getElementById('preview');
+        const previewImg=document.getElementById('previewImg');
+        const predictBtn=document.getElementById('predictBtn');
+        const loading=document.getElementById('loading');
+        const result=document.getElementById('result');
+        const resultMain=document.getElementById('resultMain');
+        const resultAll=document.getElementById('resultAll');
+        const errorBox=document.getElementById('errorBox');
+        const errorMsg=document.getElementById('errorMsg');
+        const modelSelect=document.getElementById('model_name');
+        let selectedFile=null;
+        async function loadModels(){
+            try{
+                const r=await fetch('/models');
+                const d=await r.json();
+                modelSelect.innerHTML='';
+                d.models.forEach(m=>{const o=document.createElement('option');o.value=m;o.textContent=m;modelSelect.appendChild(o)});
+            }catch(e){console.error(e)}
+        }
+        loadModels();
+        uploadBtn.addEventListener('click',()=>imageInput.click());
+        imageInput.addEventListener('change',e=>{
+            selectedFile=e.target.files[0];
+            if(selectedFile){
+                fileName.textContent=selectedFile.name;
+                predictBtn.disabled=false;
+                const reader=new FileReader();
+                reader.onload=ev=>{previewImg.src=ev.target.result;preview.style.display='block'};
+                reader.readAsDataURL(selectedFile);
+            }
+        });
+        predictBtn.addEventListener('click',async()=>{
+            if(!selectedFile)return;
+            loading.style.display='flex';result.style.display='none';errorBox.style.display='none';predictBtn.disabled=true;
+            const fd=new FormData();fd.append('image',selectedFile);fd.append('model_name',modelSelect.value);
+            try{
+                const r=await fetch('/predict',{method:'POST',body:fd});
+                const d=await r.json();
+                if(d.error)throw new Error(d.error);
+                resultMain.innerHTML='<span class="pred-class">'+d.predicted_class+'</span><span class="pred-conf">'+d.confidence+'% confidence</span>';
+                let h='<h3>All Classes</h3>';
+                for(const[c,p]of Object.entries(d.all_probabilities)){
+                    const w=Math.min(p,100);const t=c===d.predicted_class;
+                    h+='<div class="prob-row '+(t?'top':'')+'"><span class="prob-label">'+c+'</span><div class="prob-bar-bg"><div class="prob-bar" style="width:'+w+'%"></div></div><span class="prob-val">'+p+'%</span></div>';
+                }
+                resultAll.innerHTML=h;result.style.display='block';
+            }catch(err){errorMsg.textContent=err.message;errorBox.style.display='block'}
+            finally{loading.style.display='none';predictBtn.disabled=false}
+        });
+    </script>
+</body>
+</html>
